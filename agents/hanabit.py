@@ -27,19 +27,33 @@ class Hanabit(agent.Agent):
             if pnr != nr:
                 known[card_index] = str(list(map(format_hint, self.hints[h])))
         self.explanation = [["hints received:"] + known]
+        
 
         my_knowledge = knowledge[nr]
         
+        
         # we should have some more aggressive plays here
         potential_discards = []
+        probabilities = []
         for i,k in enumerate(my_knowledge):
+            # if a card is 100% playable, early termination just to be safe
             if util.is_playable(k, board):
                 return Action(PLAY, card_index=i)
+            # for every card in hand, compute the probability that this card is playable
+            p = util.probability(util.playable(board), k) 
+            probabilities.append(p)
+            # if a card is 100% useless, early termination just to be safe
             if util.is_useless(k, board):    
                 potential_discards.append(i)
-                
+  
         if potential_discards:
             return Action(DISCARD, card_index=random.choice(potential_discards))
+        # if nothing is for sure, play the most playable card when there is still room for error
+        # we can adjust how confident we are about the probability
+        maximumProbability = max(probabilities)
+        if hits > 1 and maximumProbability >= 0.6:
+            return Action(PLAY, card_index=probabilities.index(maximumProbability))
+        
 
         #From here on out if we couldn't guarantee a play or discard we look to give hints
         playables = []        
@@ -97,8 +111,10 @@ class Hanabit(agent.Agent):
                         self.hints[(hintgiven.player,i)].add(HINT_RANK)
                 
             return hintgiven
-
-        return random.choice(util.filter_actions(DISCARD, valid_actions))
+        
+        # instead of discarding a random card if nothing else better to do, discard the least playable card
+        return Action(DISCARD, card_index=probabilities.index(min(probabilities)))
+        # return random.choice(util.filter_actions(DISCARD, valid_actions))
 
     def inform(self, action, player):
         if action.type in [PLAY, DISCARD]:
