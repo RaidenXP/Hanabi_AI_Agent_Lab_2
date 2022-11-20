@@ -16,7 +16,8 @@ class Hanabit(agent.Agent):
         self.pnr = pnr
         self.explanation = []
     def get_action(self, nr, hands, knowledge, trash, played, board, valid_actions, hints, hits, cards_left):
-        #TBH not sure what this top part does. Maybe remembering what hints we gave?
+        # TBH not sure what this top part does. Maybe remembering what hints we gave?
+        # answer given: yes it does help with remembering
         for player,hand in enumerate(hands):
             for card_index,_ in enumerate(hand):
                 if (player,card_index) not in self.hints:
@@ -28,9 +29,7 @@ class Hanabit(agent.Agent):
                 known[card_index] = str(list(map(format_hint, self.hints[h])))
         self.explanation = [["hints received:"] + known]
         
-
         my_knowledge = knowledge[nr]
-        
         
         # we should have some more aggressive plays here
         potential_discards = []
@@ -48,12 +47,13 @@ class Hanabit(agent.Agent):
   
         if potential_discards:
             return Action(DISCARD, card_index=random.choice(potential_discards))
+        
         # if nothing is for sure, play the most playable card when there is still room for error
         # we can adjust how confident we are about the probability
-        maximumProbability = max(probabilities)
-        if hits > 1 and maximumProbability >= 0.6:
-            return Action(PLAY, card_index=probabilities.index(maximumProbability))
-        
+        if hits > 1 and max(probabilities) >= 0.6:
+            return Action(PLAY, card_index=probabilities.index(max(probabilities)))
+        elif cards_left <= 5 and max(probabilities) >= 0.8:
+            return Action(PLAY, card_index=probabilities.index(max(probabilities)))
 
         #From here on out if we couldn't guarantee a play or discard we look to give hints
         playables = []        
@@ -73,15 +73,36 @@ class Hanabit(agent.Agent):
             
             hinttype = [HINT_COLOR, HINT_RANK]
             
-            
             for h in self.hints[(player,card_index)]:
                 hinttype.remove(h)
             
             # as of right now chooses a random hint...
             # may not be the best course of action doe
+            # changed it to be kind of selective...
+            # chooses the hint that gives the most playable cards
+            # believe this might be the safer path and avoids hints that may
+            # cause mistakes
             t = None
             if hinttype:
-                t = random.choice(hinttype)
+                # if hinttype is size one then just hint it
+                if len(hinttype) == 1:
+                    t = hinttype[0]
+                else:
+                    # else we choose the hint that gives us more playable cards
+                    playableR = 0
+                    playableC = 0
+                    for i,card in enumerate(hands[player]):
+                        if card.rank == hands[player][card_index].rank and card.is_playable(board):
+                            playableR += 1
+                        if card.color == hands[player][card_index].color and card.is_playable(board):
+                            playableC += 1
+                    
+                    if playableR > playableC:
+                        t = HINT_RANK
+                    elif playableR == playableC:
+                        t = HINT_RANK
+                    else:
+                        t = HINT_COLOR
             
             if t == HINT_RANK:
                 for i,card in enumerate(hands[player]):
@@ -98,6 +119,7 @@ class Hanabit(agent.Agent):
  
         # not sure what this does either...
         # is this for remembering hints?
+        # answer given: yes it does help with remembering
         if hints > 0:
             hints = util.filter_actions(HINT_COLOR, valid_actions) + util.filter_actions(HINT_RANK, valid_actions)
             hintgiven = random.choice(hints)
@@ -114,6 +136,7 @@ class Hanabit(agent.Agent):
         
         # instead of discarding a random card if nothing else better to do, discard the least playable card
         return Action(DISCARD, card_index=probabilities.index(min(probabilities)))
+        
         # return random.choice(util.filter_actions(DISCARD, valid_actions))
 
     def inform(self, action, player):
